@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Surprise!</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--accent:#ffd166;--muted:#9aa7bf}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    body{background:linear-gradient(120deg,#071022 0%, #0b1220 40%, #071026 100%);color:#e6eef8;display:grid;place-items:center;padding:24px}
+    .wrap{width:100%;max-width:820px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.06));border-radius:18px;padding:30px;box-shadow:0 8px 30px rgba(2,6,23,0.7);position:relative;overflow:hidden}
+    header{display:flex;gap:16px;align-items:center}
+    .logo{width:72px;height:72px;border-radius:12px;background:linear-gradient(45deg,var(--accent),#ff7b7b);display:flex;align-items:center;justify-content:center;font-weight:700;color:#07203b}
+    h1{margin:0;font-size:1.6rem}
+    p.lead{color:var(--muted);margin:6px 0 22px}
+    .actions{display:flex;gap:12px;flex-wrap:wrap}
+    .btn{background:linear-gradient(90deg,var(--accent),#ff8fa3);border:0;padding:10px 16px;border-radius:12px;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(255,140,120,0.14)}
+    .ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px 12px;border-radius:12px;color:var(--muted);cursor:pointer}
+
+    .center{display:grid;place-items:center;gap:14px}
+    .surprise{display:none;width:100%;text-align:center;padding:22px;border-radius:12px;background:linear-gradient(90deg,rgba(255,255,255,0.03),rgba(0,0,0,0.02));}
+    .big{font-size:2rem;margin:0}
+    .sub{color:var(--muted)}
+
+    .unlock{display:flex;gap:8px;justify-content:center;align-items:center;margin-top:10px}
+    .input{padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;width:240px}
+    footer{margin-top:18px;color:var(--muted);font-size:0.9rem;display:flex;gap:12px;justify-content:center}
+
+    /* confetti canvas on top */
+    canvas#confetti{position:absolute;inset:0;pointer-events:none}
+
+    /* small responsive */
+    @media(max-width:520px){.logo{width:56px;height:56px}.wrap{padding:18px}.big{font-size:1.5rem}}
+  </style>
+</head>
+<body>
+  <div class="wrap" role="main">
+    <canvas id="confetti" aria-hidden="true"></canvas>
+    <header>
+      <div class="logo">BD</div>
+      <div>
+        <h1 id="title">A tiny mystery link</h1>
+        <p class="lead">Click the button below at midnight for a little surprise — or unlock it any time with the secret code.</p>
+      </div>
+    </header>
+
+    <main class="center">
+      <div class="actions">
+        <button class="btn" id="openBtn">Open Surprise</button>
+        <button class="ghost" id="copyBtn">Copy link to clipboard</button>
+      </div>
+
+      <div class="unlock">
+        <input class="input" id="passInput" placeholder="Enter secret (e.g. DDMMYYYY)" aria-label="secret code" />
+        <button class="ghost" id="unlockBtn">Unlock</button>
+      </div>
+
+      <section class="surprise" id="surprise">
+        <p class="big" id="wish">Happy Birthday!</p>
+        <p class="sub" id="wishSub">You unlocked the surprise — opening your present now 🎁</p>
+        <div style="margin-top:14px">
+          <button class="btn" id="revealMore">Reveal more</button>
+        </div>
+        <div id="extra" style="margin-top:14px;display:none;text-align:left;line-height:1.5">
+          <h3 style="margin:0 0 8px">Your personalised gift</h3>
+          <p style="margin:0 0 8px">This is where you can add a link to a playlist, a video, or photos. Replace this content with whatever you like.</p>
+          <ul style="margin:8px 0 0;padding-left:18px;color:var(--muted)">
+            <li>🎵 A custom playlist</li>
+            <li>📺 A short montage video</li>
+            <li>🖼️ A gallery of funny photos</li>
+          </ul>
+        </div>
+      </section>
+
+      <p style="margin-top:10px;color:var(--muted);font-size:0.95rem">Tip: open this page in private mode to keep it a secret.</p>
+    </main>
+
+    <footer>
+      <div>Made with ❤️</div>
+      <div>•</div>
+      <div id="timeNote">Local time: Kuala Lumpur</div>
+    </footer>
+  </div>
+
+  <script>
+    // Basic behavior: open surprise only if time >= 00:00 local or if unlocked with code
+    const openBtn = document.getElementById('openBtn');
+    const unlockBtn = document.getElementById('unlockBtn');
+    const copyBtn = document.getElementById('copyBtn');
+    const surprise = document.getElementById('surprise');
+    const passInput = document.getElementById('passInput');
+    const revealMore = document.getElementById('revealMore');
+    const extra = document.getElementById('extra');
+    const wish = document.getElementById('wish');
+    const wishSub = document.getElementById('wishSub');
+
+    // === Customize these values ===
+    // secret code (default: friend's birthday in DDMMYYYY format) - change as you like
+    const SECRET = '01012000'; // <<-- edit this before sending (or tell me and I will)
+    const NAME = 'Best Friend'; // <<-- edit the name
+    const PERSONAL_MESSAGE = `Hey ${NAME}! Wishing you an amazing birthday full of laughter and cake. Love, your pal.`;
+    // Extra: external playlist or video (put full URL or leave null)
+    const EXTRA_URL = null; // e.g. 'https://youtube.com/...' or 'https://open.spotify.com/...'
+    // -------------------------------
+
+    // show time note in footer with localized time
+    function updateTimeNote(){
+      const now = new Date();
+      const opts = {weekday:'short',year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'};
+      document.getElementById('timeNote').textContent = 'Local time: ' + now.toLocaleString();
+    }
+    updateTimeNote(); setInterval(updateTimeNote,60000);
+
+    function showSurprise(){
+      surprise.style.display = 'block';
+      wish.textContent = `Happy Birthday, ${NAME}!`;
+      wishSub.textContent = PERSONAL_MESSAGE;
+      runConfetti();
+      try{playAudio()}catch(e){}
+    }
+
+    // check time: allow if it's midnight local time
+    function isMidnight(){
+      const d = new Date();
+      return d.getHours() === 0 && d.getMinutes() === 0;
+    }
+
+    openBtn.addEventListener('click', () => {
+      if(isMidnight()){
+        showSurprise();
+      } else {
+        // show gentle warning and allow manual open after a confirm
+        const ok = confirm('It is not exactly midnight yet. Open the surprise anyway?');
+        if(ok) showSurprise();
+      }
+    });
+
+    unlockBtn.addEventListener('click', () => {
+      const val = (passInput.value||'').replace(/\D/g,'');
+      if(val === SECRET){
+        showSurprise();
+      } else {
+        alert('Wrong code — try again (the code is usually the birthday in DDMMYYYY)');
+      }
+    });
+
+    copyBtn.addEventListener('click', async () => {
+      try{
+        await navigator.clipboard.writeText(location.href);
+        copyBtn.textContent = 'Link copied!';
+        setTimeout(()=>copyBtn.textContent='Copy link to clipboard',2200);
+      }catch(e){
+        prompt('Copy this link:', location.href);
+      }
+    });
+
+    revealMore.addEventListener('click', ()=>{
+      extra.style.display = extra.style.display === 'none' ? 'block' : 'none';
+      if(EXTRA_URL && extra.style.display === 'block'){
+        const a = document.createElement('a'); a.href = EXTRA_URL; a.target='_blank'; a.rel='noopener'; a.textContent='Open the surprise link';
+        extra.appendChild(document.createElement('div')).appendChild(a);
+      }
+    });
+
+    // Simple confetti — lightweight
+    function runConfetti(){
+      const c = document.getElementById('confetti');
+      const ctx = c.getContext('2d');
+      let W = c.width = innerWidth; let H = c.height = innerHeight;
+      const pieces = [];
+      window.addEventListener('resize', ()=>{W=c.width=innerWidth;H=c.height=innerHeight});
+      for(let i=0;i<120;i++){
+        pieces.push({x:Math.random()*W,y:Math.random()*-H,vy:2+Math.random()*6, size:2+Math.random()*6, angle:Math.random()*360, r:Math.random()*255|0, g:Math.random()*180|0, b:Math.random()*220|0});
+      }
+      let running=true;
+      function frame(){
+        ctx.clearRect(0,0,W,H);
+        for(let p of pieces){
+          ctx.save();
+          ctx.fillStyle = `rgba(${p.r},${p.g},${p.b},0.95)`;
+          ctx.beginPath();
+          ctx.ellipse(p.x, p.y, p.size+1, p.size*0.6, p.angle, 0, Math.PI*2);
+          ctx.fill();
+          ctx.restore();
+          p.y += p.vy; p.x += Math.sin(p.y*0.01)*2; p.angle += 0.05;
+          if(p.y>H+50){ p.y = -20; p.x = Math.random()*W; }
+        }
+        if(running) requestAnimationFrame(frame);
+      }
+      frame();
+      setTimeout(()=>{running=false; ctx.clearRect(0,0,W,H);}, 16000);
+    }
+
+    // play short chime (generated with WebAudio API)
+    function playAudio(){
+      try{
+        const ac = new (window.AudioContext||window.webkitAudioContext)();
+        const o = ac.createOscillator();
+        const g = ac.createGain();
+        o.type='sine'; o.frequency.value=520; g.gain.value=0.001;
+        o.connect(g); g.connect(ac.destination);
+        o.start();
+        g.gain.exponentialRampToValueAtTime(0.06, ac.currentTime+0.02);
+        o.frequency.setValueAtTime(520, ac.currentTime);
+        o.frequency.exponentialRampToValueAtTime(760, ac.currentTime+0.22);
+        g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime+1.2);
+        setTimeout(()=>{o.stop(); ac.close();}, 1400);
+      }catch(e){/*ignore*/}
+    }
+
+    // Accessibility: allow enter key on input
+    passInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') unlockBtn.click(); });
+
+    // If the page is opened with ?auto=1 it will auto-open the surprise (helpful for scheduled links)
+    const params = new URLSearchParams(location.search);
+    if(params.get('auto') === '1'){
+      // small delay for page load
+      setTimeout(()=>{showSurprise();}, 600);
+    }
+
+  </script>
+</body>
+</html>
